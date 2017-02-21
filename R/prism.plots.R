@@ -5,13 +5,15 @@
 ##' @title Plot prism-like Plots
 ##' @param formula a formula object with the quantitative variable as the response variable (e.g., Var~group).
 ##' @param data a dataset containing the variables indicated in \code{formula}
-##' @param centerfunc what function should be used to indicate the center of the distribution. Defaults to mean.
-##' @param spreadfunc what function should be used to calculate the spread of the distribution. Defaults to sd. Currently,
-##' it must be a symmetrical function. Future implementations will have non-symmetric functions (e.g., interquartile range).  
+##' @param centerfunc what function should be used to indicate the center of the distribution. Defaults to median.
+##' @param interquartile Should the interquartile range be plotted? Defaults to TRUE.
+##' @param spreadfunc what function should be used to calculate the spread of the distribution? If interquartile=TRUE,
+##' this argument will be ignored. The default (when not ignored) is to produce a 95\% confidence interval (1.96*sd(x)/sqrt(n)).
 ##' @param def.axis Logical. Should the default axes be used?
 ##' @param jitter.y Logical. Should the y values be jittered as well?
 ##' @param add Should the plot be added to an existing plot?
 ##' @param start What X value should the plot start at? (defaults to zero)
+##' @param col What color should the dots be painted? Defaults to gray.
 ##' @param ... other arguments passed to plot
 ##' @author Dustin Fife	
 ##' @seealso \code{\link{boxplot}}, \code{\link{densityPlotR}}, \code{\link{plotSigBars}}
@@ -20,18 +22,32 @@
 ##' @examples
 ##' prism.plots(count ~ spray, data = InsectSprays, centerfunc=mean)
 ##' prism.plots(count ~ spray, data = InsectSprays, centerfunc=median)
-prism.plots = function(formula, data, centerfunc=mean, spreadfunc=function(x){return(sd(x)/sqrt(length(x)))},
-		def.axis=TRUE, jitter.y=FALSE, add=FALSE, start=0,...){
+prism.plots = function(formula, data, centerfunc=median, interquartile=TRUE,spreadfunc=function(x){return(1.96*sd(x)/sqrt(length(x)))},
+		def.axis=TRUE, jitter.y=FALSE, add=FALSE, start=0, col="gray", ...){
 			
 	dv = as.character(formula[[2]])
     iv = as.character(formula[[3]])
+
+	#### make a vector of colors if they didn't supply one
+	col = rep(col, times=nrow(data))
+
     
     #### resort so variables line up
-    data = data[order(data[,iv]),]
+    ord = order(data[,iv])
+    data = data[ord,]
+    col = col[ord]
     types = unique(data[, iv])
     
-    centers = aggregate(formula, data=data, FUN=centerfunc)[,2]
-    spread = aggregate(formula, data=data, FUN=spreadfunc)[,2]
+    centers = aggregate(formula, data=data, FUN=centerfunc)[,2]    
+    spread=matrix(nrow=length(types), ncol=2)
+    if (interquartile){
+		vals = aggregate(formula, data=data, FUN=quantile, probs=c(.25, .75))    	
+    	spread = vals[,2]
+    } else {
+	    ss = aggregate(formula, data=data, FUN=spreadfunc)[,2]   
+	    spread = cbind(centers-ss,centers+ss)
+    }	
+
     
 	data = data[order(data[,iv]),]
 	un.vals = unique(data[,iv])
@@ -51,20 +67,23 @@ prism.plots = function(formula, data, centerfunc=mean, spreadfunc=function(x){re
 					xlim=c(.5,(length(types)+.5)), xaxt="n", x=NA, y=NA)
 	args = modifyList(labels, list(x=NA,...))
 	
+	
+
+	
 	##### compute mean (or median)
     if (def.axis){
 	    if (!add){do.call("plot", args)}
-	    points(jitter(iv.vals) + rep(start, times=nrow(data)), depvar, pch=16, col="gray")
+	    points(jitter(iv.vals) + rep(start, times=nrow(data)), depvar, col=col, ...)
 	    axis(1, at=(1:length(types))+start, labels=unique(data[,iv]))
     } else {
 	    if (!add){do.call("plot", args)}
-	    points(jitter(iv.vals) + rep(start, times=nrow(data)), depvar, pch=16, col="gray")
+	    points(jitter(iv.vals) + rep(start, times=nrow(data)), depvar, col=col,...)
     }
     
-    segments(1:length(unique(data[,iv]))-.25 + start, centers, 1:length(unique(data[,iv]))+.25 + start, centers, lwd=2)
-    segments(1:length(unique(data[,iv])) + start, centers-spread, 1:length(unique(data[,iv])) + start, centers+spread, lwd=2)
-    segments(1:length(unique(data[,iv]))-.05 + start, centers-spread, 1:length(unique(data[,iv]))+.05 + start, centers-spread, lwd=2)    
-    segments(1:length(unique(data[,iv]))-.05 + start, centers+spread, 1:length(unique(data[,iv]))+.05 + start, centers+spread, lwd=2)         
+    segments(1:length(unique(data[,iv]))-.25 + start, centers, 1:length(unique(data[,iv]))+.25 + start, centers, lwd=2,...)
+    segments(1:length(unique(data[,iv])) + start, spread[,1], 1:length(unique(data[,iv])) + start, spread[,2], lwd=2,...)
+    segments(1:length(unique(data[,iv]))-.05 + start, spread[,1], 1:length(unique(data[,iv]))+.05 + start, spread[,1], lwd=2,...)    
+    segments(1:length(unique(data[,iv]))-.05 + start, spread[,2], 1:length(unique(data[,iv]))+.05 + start, spread[,2], lwd=2,...)         
 }
 
 ##' Add significance bars to a prism plot, corrected for multiple comparisons either using Tukey's HSD (parametric),
